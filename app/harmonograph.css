@@ -1,0 +1,101 @@
+body {
+  background-color: rgba(45, 48, 54, 1);
+  margin: 0;
+  font-family: Andale Mono, monospace;
+  font-size: 10pt;
+  overflow: hidden;
+
+  display: flex;
+  flex-wrap: wrap;
+  height: 100%;
+  user-select: none;
+}
+
+#harmonograph {
+  height: 100%;
+  display: flex;
+  flex: none;
+  width: 60%;
+  position: relative;
+}
+
+#controls {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  position: relative;
+}
+
+.formula {
+  color: #fff;
+  font-family: georgia, serif;
+  font-size: 1.5vw;
+  justify-content: center;
+  position: relative;
+  top: 5vh;
+}
+
+.axis {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  position: relative;
+}
+
+.formula {
+  display: flex;
+  flex: 3;
+}
+
+.slider {
+  display: flex;
+  flex: 1;
+  margin: 0;
+  color: #fff;
+  position: relative;
+  user-select: none;
+}
+
+.slider label {
+  padding: 5px;
+}
+
+.slider .bar {
+  position: absolute;
+  top: 22px;
+  left: 0;
+  height: 4;
+  background-color: #ff0;
+  border-radius: 2px;
+}
+
+.slider .value {
+  position: absolute;
+  right: 0;
+  top: 0;
+  padding: 5px;
+}
+
+#reset, #plot {
+  border: none;
+  background: none;
+  color: #fff;
+  left: 10px;
+  font-family: georgia, serif;
+  font-size: 1.2vw;
+  position: absolute;
+  font-style: italic;
+  cursor: pointer;
+  outline: none;
+}
+
+#reset {
+  bottom: 10px;
+}
+#plot {
+  top: 10px;
+}
+
+sup {
+  font-size: .5em;
+}

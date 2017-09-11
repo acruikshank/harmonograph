@@ -1,0 +1,271 @@
+<html>
+  <head>
+    <title>Harmonograph</title>
+    <link rel="stylesheet" href="harmonograph.css" media="screen">
+  </head>
+  <body>
+    <canvas id="harmonograph"></canvas>
+    <div id="controls">
+      <div class="axis" id="x">
+        <div class="formula" id="x-formula"></div>
+        <div class="slider" id="a1x"></div>
+        <div class="slider" id="f1x"></div>
+        <div class="slider" id="p1x"></div>
+        <div class="slider" id="d1x"></div>
+        <div class="slider" id="a2x"></div>
+        <div class="slider" id="f2x"></div>
+        <div class="slider" id="p2x"></div>
+        <div class="slider" id="d2x"></div>
+      </div>
+      <div class="axis" id="x">
+        <div class="formula" id="y-formula"></div>
+        <div class="slider" id="a1y"></div>
+        <div class="slider" id="f1y"></div>
+        <div class="slider" id="p1y"></div>
+        <div class="slider" id="d1y"></div>
+        <div class="slider" id="a2y"></div>
+        <div class="slider" id="f2y"></div>
+        <div class="slider" id="p2y"></div>
+        <div class="slider" id="d2y"></div>
+      </div>
+    </div>
+  </body>
+  <script>
+    var MAX_COST = 5000;
+    var dT = .01;
+    var ipcRenderer;
+    var canvas, ctx;
+    initIPC();
+    var params = [
+      {name:'x amplitude 1', id:"a1x", min:1, max:30, start:30, scale:'linear'},
+      {name:'x frequency 1', id:"f1x", min:1, max:1000, start:4, scale:'log', round: true},
+      {name:'x phase 1', id:"p1x", min:0, max:2*Math.PI, start:0, scale:'linear'},
+      {name:'x decay 1', id:"d1x", min:0, max:1, start:0, scale:'linear'},
+
+      {name:'x amplitude 2', id:"a2x", min:1, max:30, start:30, scale:'linear'},
+      {name:'x frequency 2', id:"f2x", min:1, max:1000, start:8, scale:'log', round: true},
+      {name:'x phase 2', id:"p2x", min:0, max:2*Math.PI, start:0, scale:'linear'},
+      {name:'x decay 2', id:"d2x", min:0, max:1, start:0, scale:'linear'},
+
+      {name:'y amplitude 1', id:"a1y", min:1, max:30, start:30, scale:'linear'},
+      {name:'y frequency 1', id:"f1y", min:1, max:1000, start:2, scale:'log', round: true},
+      {name:'y phase 1', id:"p1y", min:0, max:2*Math.PI, start:Math.PI/2, scale:'linear'},
+      {name:'y decay 1', id:"d1y", min:0, max:1, start:0, scale:'linear'},
+
+      {name:'y amplitude 2', id:"a2y", min:1, max:30, start:30, scale:'linear'},
+      {name:'y frequency 2', id:"f2y", min:1, max:1000, start:16, scale:'log', round: true},
+      {name:'y phase 2', id:"p2y", min:0, max:2*Math.PI, start:Math.PI/2, scale:'linear'},
+      {name:'y decay 2', id:"d2y", min:0, max:1, start:0, scale:'linear'},
+    ]
+    var values = loadValues()
+    var initialized = false;
+
+    function xFunction(time, v) {
+        return v.a1x * Math.sin(v.f1x * time + v.p1x) * Math.exp(-v.d1x*time)
+      + v.a2x * Math.sin(v.f2x * time + v.p2x) * Math.exp(-v.d2x*time)
+    }
+    function yFunction(time, v) {
+      return v.a1y * Math.sin(v.f1y * time + v.p1y) * Math.exp(-v.d1y*time)
+      + v.a2y * Math.sin(v.f2y * time + v.p2y) * Math.exp(-v.d2y*time)
+    }
+    initSliders()
+    initCanvas('harmonograph')
+
+    window.addEventListener('resize', initCanvas)
+
+    function initIPC() {
+      try {
+        ipcRenderer = require('electron').ipcRenderer
+        ipcRenderer.on('reset', reset)
+        ipcRenderer.on('values', () => {console.log('request values');ipcRenderer.send('values', JSON.stringify(values))})
+      } catch (e) { }
+    }
+
+    function saveState() {
+      var workspace = JSON.stringify({
+        videoPath: videoPath,
+        videoSync: videoInterval ? videoInterval.syncPoint : 0,
+        dataPath: dataPath,
+        dataSync: dataInterval ? dataInterval.syncPoint : 0,
+        viewInterval: viewInterval,
+        signals: signals.map((s) => s.serialize()),
+        markers: markers.map((m) => m.serialize())
+      });
+      if (ipcRenderer)
+        ipcRenderer.send('workspace', workspace);
+    }
+
+    function initSliders() {
+      params.forEach((p) => Slider(p, updateValue, values[p.id]))
+      initialized = true
+    }
+
+    function updateValue(id, value) {
+      values[id] = value
+      localStorage.paramValues = JSON.stringify(values)
+      render()
+    }
+
+    function loadValues() {
+      try {
+        if (localStorage.paramValues)
+          return JSON.parse(localStorage.paramValues)
+      } catch(e) { }
+      return {}
+    }
+
+    function reset() {
+      values = {}
+      initialized = false;
+      initSliders()
+      render()
+    }
+
+    function initCanvas() {
+      let canvas = document.getElementById('harmonograph')
+      let cw = canvas.width = canvas.offsetWidth;
+      let ch = canvas.height = canvas.offsetHeight;
+      let ctx = canvas.getContext('2d')
+      let scale = Math.min(cw,ch) / 160
+      ctx.translate(cw/2, ch/2)
+      ctx.scale(scale, scale)
+      ctx.fillStyle = "#fff"
+      render()
+    }
+
+    function render() {
+      if (! initialized) return;
+      let canvas = document.getElementById('harmonograph')
+      let ctx = canvas.getContext('2d')
+      ctx.clearRect(-200,-200, 400, 400)
+      ctx.strokeStyle = '#fff'
+      ctx.lineWidth = .25
+
+      var time = 0
+      var cost = 0
+      var point = {x: xFunction(time, values), y: yFunction(time, values)}
+      time += dT
+      ctx.beginPath()
+      ctx.moveTo(point.x, point.y)
+      while(cost < MAX_COST) {
+        let nextPoint = {x: xFunction(time, values), y: yFunction(time, values)}
+        ctx.lineTo(nextPoint.x, nextPoint.y)
+        time += dT
+        cost += .1 + distance(point, nextPoint)
+        point = nextPoint
+      }
+      ctx.stroke();
+
+      renderFormulas()
+    }
+
+    function renderFormulas() {
+      el('x-formula').innerHTML = ('<i>x</i> = _a1x_&nbsp;<i>sin</i>(_f1x_<i>t</i>+_p1x_)<i>e</i><sup>-_d1x_<i>t</i></sup> + '
+        + '_a2x_&nbsp;<i>sin</i>(_f2x_<i>t</i>+_p2x_)<i>e</i><sup>-_d2x_<i>t</i></sup>')
+        .replace(/_(\w+)_/g, (m,v) => values[v].toLocaleString())
+      el('y-formula').innerHTML = ('<i>y</i> = _a1y_&nbsp;<i>sin</i>(_f1y_<i>t</i>+_p1y_)<i>e</i><sup>-_d1y_<i>t</i></sup> + '
+        + '_a2y_&nbsp;<i>sin</i>(_f2y_<i>t</i>+_p2y_)<i>e</i><sup>-_d2y_<i>t</i></sup>')
+        .replace(/_(\w+)_/g, (m,v) => values[v].toLocaleString())
+    }
+
+    function Slider(params, update, initialValue) {
+      var container = el(params.id)
+      var dragging = false;
+      var min = params.scale == 'log' ? Math.log(params.min) : params.min;
+      var max = params.scale == 'log' ? Math.log(params.max) : params.max;
+      container.innerHTML = '<label>' + params.name + '</label><span class="bar"></span><span class="value"></span>'
+      var bar = container.querySelector('.bar')
+      var value = container.querySelector('.value')
+      updateValue(initialValue != null ? initialValue : params.start)
+      container.addEventListener('mousedown', (e) => {
+        dragging = true;
+        mousemove(e)
+      })
+      container.addEventListener('mousemove', mousemove)
+      container.addEventListener('mouseup', mouseexit)
+      container.addEventListener('mouseleave', mouseexit)
+
+      function mousemove(e) {
+        if (!dragging) return
+         var widthFraction = coordsWithin(container, e.clientX, e.clientY).x / container.offsetWidth
+         updateValue(rangeValue(widthFraction))
+      }
+
+      function mouseexit(e) { dragging = false; }
+
+      function coordsWithin(el, x, y) {
+        if (el == document.body) return {x: x, y: y}
+        return coordsWithin(el.parentElement, x - el.offsetLeft, y - el.offsetTop)
+      }
+
+      function updateValue(v) {
+        if (params.round) v = Math.round(v)
+        bar.style.width = Math.max(Math.round(rangeFraction(v) * container.offsetWidth),4) + 'px'
+        value.innerHTML = v.toLocaleString()
+        update(params.id, v)
+      }
+
+      function rangeValue(fraction) {
+        var scaled = min + fraction * (max - min)
+        return params.scale == 'log' ? Math.exp(scaled) : scaled
+      }
+
+      function rangeFraction(v) {
+        var scaled = params.scale == 'log' ? Math.log(v) : v
+        return (scaled - min) / (max - min)
+      }
+    }
+
+    function distance(p1, p2) { let x=p1.x-p2.x, y=p1.y-p2.y; return Math.sqrt(x*x+y*y) }
+
+    function restoreSaved(saved) {
+      clearSignals();
+      markers = []
+      el('markers').innerHTML = ''
+      viewInterval = null
+      setVideo(saved.videoPath);
+      setData(saved.dataPath, dataSet);
+
+      function dataSet() {
+        if (videoInterval)
+          videoInterval.syncPoint = saved.videoSync
+
+        if (dataInterval)
+          dataInterval.syncPoint = saved.dataSync
+
+        if (saved.markers) {
+          el('markers').innerHTML = ''
+          saved.markers.forEach(function(m) {
+            addMarker(m.start, m.end, m.name, m.color);
+          })
+        }
+
+        setToolset(saved.signals)
+      }
+    }
+
+    function classes(el) { return el.getAttribute('class') ? el.getAttribute('class').split(/\s+/g) : [] }
+    function removeClass(el, c) {
+      let cs = classes(el), i = c.indexOf(c)
+      cs.splice(i,1)
+      if (~i) el.setAttribute('class',cs.join(' '))
+    }
+    function addClass(el,c) {
+      removeClass(el,c)
+      el.setAttribute('class', [c].concat(classes(document.body)).join(' '))
+    }
+    function el(id) { return document.getElementById(id); }
+    function project(a,b,c,d,x) { return lerp(c,d,prel(a,b,x)) }
+    function lerp(a,b,x) { return a + x*(b-a); }
+    function prel(a,b,x) { return (x-a)/(b-a); }
+    function parseTime(str) {
+      var m = str.match(/(\d+):(\d+):(\d+)\s*(AM|PM)?/i)
+      if (!m) return {h:0, m:0, s:0}
+      return {h: (parseInt(m[1])%12) + (m[4]=='PM'?12:0), m: parseInt(m[2]), s: parseInt(m[3]) }
+    }
+    function formatMillis(ms) { return Math.floor(ms/3600000) + ':' + pad2(Math.floor(ms/60000)%60) + ':' + pad2(Math.floor(ms/1000)%60) }
+    function formatTime(d) { return ((d.getHours()+11)%12+1) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()) }
+    function formatFullTime(d) { return formatTime(d) + (d.getHours() >= 12 ? ' PM' : ' AM') }
+    function pad2(n) { return (n > 9 ? '' : '0') + n }
+  </script>
+</html>
